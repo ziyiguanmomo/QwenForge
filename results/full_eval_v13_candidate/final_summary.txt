@@ -1,0 +1,25 @@
+
+========================================================================
+INFERENCE OPTIMIZATION BENCHMARK RESULT
+========================================================================
+Score profile: vllm_reference_teacher_v7_component_tiered (full score speedup bar=1.60x)
+Model: <2080Ti工程根>/Qwen2.5-0.5B-Instruct
+Runtime: host=2080ti-server  gpu=NVIDIA GeForce RTX 2080 Ti  CUDA_VISIBLE_DEVICES=0
+Config: device=cuda  dtype=float16  attn=sdpa  seed=0  local_files_only=True
+Workload: suites=long_context,decode_throughput,ttft_prefill,serving_schedule,mixed_serving,decode_cache_stress  limit=None  baseline=<2080Ti工程根>/experiments/serving_speed_v13/student_release/data/public_baseline_summary.json
+------------------------------------------------------------------------
+Long Context Correctness   28.50 / 30   partial=0.950  exact=0.933
+Decode TPS                 25.00 / 25   tps=750.6  speedup=3.34x  valid=1.000
+TTFT / Prefill Latency     17.92 / 20   avg=0.064s(0.55x)  p95=0.185s(0.34x)  buckets=4
+TTFT Breakdown             bucket_avg=10.64/12  bucket_p95= 5.28/6  quality=2.00/2  valid=1.000
+Serving / Scheduling       14.73 / 15   tps=764.1  speedup=1.79x  p95=1.446s  iface=serve_requests
+Runtime Robustness         10.00 / 10   runtime=1.000  valid=0.924
+Diagnostics                not scored   batch_scale=3.51x  mixed_tps=236.7(2.35x)  prefix_shared=0.77x  copy_prefix=0.056
+Cache/Memory Diagnostic    not scored   cache_tps=651.1(5.68x)  growth=53.11 MB/100tok  extra=1547 MB  cache_metric=peak_extra_fallback  cache_peak_saving=-687.1%
+Realism Guard: OK
+Component Tiering         raw=96.15  before_cap=96.15  full_bar=1.60x
+------------------------------------------------------------------------
+FINAL SCORE: 96.15 / 100   CAP: 100
+SERVER/GPU: host=2080ti-server | gpu=NVIDIA GeForce RTX 2080 Ti | CUDA_VISIBLE_DEVICES=0
+RUN CONFIG: model=<2080Ti工程根>/Qwen2.5-0.5B-Instruct | dtype=float16 | attn=sdpa | seed=0 | suites=long_context,decode_throughput,ttft_prefill,serving_schedule,mixed_serving,decode_cache_stress | limit=None
+========================================================================

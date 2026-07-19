@@ -1,0 +1,10 @@
+# 学生端只需要运行已准备好的公开 benchmark，不需要 lm_eval。
+# torch 建议优先使用课程服务器预装版本；如需自装，请按服务器 CUDA/驱动选择合适 wheel。
+
+transformers
+accelerate
+safetensors
+tokenizers
+sentencepiece
+numpy
+tqdm
