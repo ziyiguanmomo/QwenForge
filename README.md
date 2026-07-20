@@ -10,6 +10,8 @@
 - 最终版本：`v20260719_2080ti_96p15_servingpolicymemo`，正式评测得分 **96.15 / 100**
 - 📊 汇报 slides：[slides/Qwen推理优化汇报.pdf](slides/Qwen推理优化汇报.pdf)（16 页，含瓶颈分析、五轮优化与定量归因）
 
+> **范围说明**：本项目为暑期学校实训作品，从接触课题到最终交付只有两天左右，因此只深入研究了推理优化问题空间中的一小部分——单卡、小模型（0.5B）、贪心解码场景下的调度与访存瓶颈；量化、投机解码、多卡并行、PagedAttention 等方向均未涉及。3.34× 反映的是该特定场景下（小模型 + Turing 老卡，通用框架每 token 固定开销占比大）专用引擎相对通用引擎的优势，不构成对 vLLM 的一般性性能比较。
+
 ## 1. 最终成绩
 
 全六套 workload × 3 次计时重复 × process 隔离，与教师 vLLM baseline（0.8.5.post1，同卡同数据同计时口径）严格一致：
@@ -17,11 +19,13 @@
 | 分项 | 得分 | 关键指标 |
 |---|---:|---|
 | Long Context | 28.50 / 30 | partial 0.950，exact 0.933 |
-| Decode TPS | **25.00 / 25（满分）** | 750.6 tok/s = vLLM 的 **3.34×** |
+| Decode TPS | **25.00 / 25（满分）** | 750.6 tok/s\* = vLLM 的 **3.34×** |
 | TTFT / Prefill | 17.92 / 20 | avg 0.064 s，p95 0.185 s |
 | Serving / Scheduling | **14.73 / 15** | **764.1 tok/s（1.79×）**，p95 1.446 s，12/12 内容有效 |
 | Runtime Robustness | 10.00 / 10 | runtime 1.000，零 OOM / Traceback |
 | **总分** | **96.15 / 100** | Realism Guard OK，CAP 100 |
+
+\* Decode TPS 为 batch ∈ {1, 2, 4} 中的最优成绩，即 **batch=4 的聚合吞吐**（多请求共享同一次权重搬运）。单请求（batch=1）decode 约 250 tok/s、每步 ~4 ms——即 FP16 权重 988 MB ÷ 实测有效带宽 ~250 GB/s 的下限。baseline vLLM 按同口径、同 batch 配置对比。
 
 合规验证：教师 `validate_engine.py` Signature / Runtime interface 双通过；手写 forward 与官方 Transformers 对齐（top-1 token id 双方均 2130）；禁止项扫描 0 命中。
 
