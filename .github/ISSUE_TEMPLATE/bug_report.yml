@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible problem (do not disclose security exploits here)
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "For security issues, follow SECURITY.md instead of posting details publicly."
+  - type: textarea
+    id: summary
+    attributes:
+      label: Problem description
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include commands or a small self-contained example with no secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Commit, GPU, driver, Python, PyTorch, CUDA, Triton, and model revision.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or metrics (redacted)
+    validations:
+      required: false

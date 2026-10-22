@@ -1,0 +1,24 @@
+name: Feature proposal
+description: Suggest a focused improvement for the open-source inference engine
+title: "[Proposal] "
+body:
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation and use case
+      description: Who benefits and what problem is solved?
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed change and alternatives
+    validations:
+      required: true
+  - type: textarea
+    id: test
+    attributes:
+      label: How should the change be tested?
+      description: Include hardware requirements, expected regressions, and measurement method.
+    validations:
+      required: false

@@ -1,0 +1,28 @@
+name: CPU checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-checks:
+    name: Static validation and unit tests (no GPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python sources
+        run: python -m compileall -q student_engine.py scripts utils examples tests
+      - name: Validate engine structure and restricted imports
+        run: python scripts/validate_engine.py --skip-load
+      - name: Run CPU-only unit tests
+        run: python -m unittest discover -s tests -v
