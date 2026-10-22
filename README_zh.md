@@ -65,9 +65,9 @@
 .
 ├── student_engine.py        ← 引擎主体（forward / prefill / decode / KV cache / 调度 / Triton kernels）
 ├── utils/                   ← 权重加载、显存与指标工具
-├── scripts/                 ← 评测与校验脚本（暑期学校公开评测包）
+├── scripts/                 ← 项目作者独立编写的评测与校验脚本
 ├── examples/                ← 手写引擎最小骨架示例
-├── data/                    ← 公开评测数据（jsonl）与 baseline summary
+├── data/                    ← 作者自行构建的评测数据（jsonl）与 baseline summary
 ├── results/                 ← 96.15 正式评测原始结果（full_eval_v13_candidate）
 ├── docs/
 │   ├── optimization_journey.md  ← 完整优化历程（91.35 → 96.15）
@@ -119,11 +119,13 @@ student_engine.py (96.15)  2291507452793a67551a1124fd2a7e5fc535c6e6bb3cf29be98ab
 - [ ] **动态显存管理 (PagedAttention)**：引入块级 KV Cache 管理与 Continuous Batching，提升长序列并发服务吞吐。
 - [ ] **多模型家族与跨代 GPU 支持**：扩展适配 Qwen2.5-1.5B/3B 及 Llama-3.2 系列，并提供跨代架构（Turing / Ampere / Ada）的自动化微基准测试与 CI 回归流水线。
 
-## License
+## 许可证与来源说明
 
-MIT — see [LICENSE](LICENSE).
+QwenForge 作者原创的推理引擎、`scripts/` 中的评测及校验脚本、`data/` 中自行构建的数据，以及原创项目文档，采用 [MIT 许可证](LICENSE)。
 
-`scripts/`、`data/` 与 `docs/benchmark_spec.md` 源自华东师范大学暑期学校实训发布的公开评测包，仅为复现评测成绩保留，版权归原作者所有。
+**项目诞生背景不等于文件版权归属：** QwenForge 最初在华东师范大学暑期学校期间完成原型。经项目维护者确认，仓库中的评测脚本及数据是为本项目自行编写或生成的，并非直接复制学校提供的评测包。
+
+**第三方题面例外：** [`docs/benchmark_spec.md`](docs/benchmark_spec.md) 沿用了暑期学校原始任务题面和评测规范。原文权利归相应作者／组织方所有，**不属于 QwenForge MIT 许可的覆盖范围**；本仓库收录该文件不代表授予第三方将原始题面按 MIT 协议再利用的权利。具体见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 致谢
 

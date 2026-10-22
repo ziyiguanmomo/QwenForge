@@ -1,5 +1,7 @@
 # 大模型推理优化挑战
 
+> **来源及版权说明**：本文件保留华东师范大学暑期学校原始任务题面与评测规范，供理解项目背景和评测要求之用。原始题面版权归相应作者或组织方所有，**不属于 QwenForge 项目 MIT 许可范围**。仓库内其他由项目维护者自行编写的评测脚本和数据不应与本文件混为一谈。参见 [第三方材料与来源说明](../THIRD_PARTY_NOTICES.md)。
+
 您需要实现一个手写 Qwen2.5-0.5B-Instruct 推理引擎。入口必须是 `student_engine.py` 里的 `StudentEngine`；如果实现较复杂，可以在同目录新增辅助 `.py` 文件，例如 `kv_cache.py`、`scheduler.py`、`paged_attention.py`。可以读取 Hugging Face tokenizer、config 和真实权重文件，但模型 forward、prefill、decode、KV cache 和优化策略必须自己写。
 
 ## 需要实现的接口
