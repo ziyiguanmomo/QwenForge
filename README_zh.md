@@ -14,7 +14,7 @@
 
 ## 1. 最终成绩
 
-全六套 workload × 3 次计时重复 × process 隔离，与教师 vLLM baseline（0.8.5.post1，同卡同数据同计时口径）严格一致：
+全六套 workload × 3 次计时重复 × process 隔离，与留存的教师 vLLM 参考基线（0.8.5.post1）比较。两者使用**同型号 RTX 2080 Ti**，六套数据文件的 SHA-256 指纹一致，按记录中的相应评测设置比较；但**并非同一主机或完全相同的 PyTorch 环境**。详细见[测试与基线说明](docs/TESTING.md)：
 
 | 分项 | 得分 | 关键指标 |
 |---|---:|---|
@@ -65,9 +65,9 @@
 .
 ├── student_engine.py        ← 引擎主体（forward / prefill / decode / KV cache / 调度 / Triton kernels）
 ├── utils/                   ← 权重加载、显存与指标工具
-├── scripts/                 ← 项目作者独立编写的评测与校验脚本
+├── scripts/                 ← 主要由作者自行开发维护的评测与校验脚本
 ├── examples/                ← 手写引擎最小骨架示例
-├── data/                    ← 作者自行构建的评测数据（jsonl）与 baseline summary
+├── data/                    ← 评测工作负载（JSONL）和留存的 vLLM 参考基线结果
 ├── results/                 ← 96.15 正式评测原始结果（full_eval_v13_candidate）
 ├── docs/
 │   ├── optimization_journey.md  ← 完整优化历程（91.35 → 96.15）
@@ -79,20 +79,30 @@
 
 ## 4. 复现
 
-环境：CUDA GPU（已在 RTX 2080 Ti + PyTorch 2.5.1 / py3.12 / CUDA 12.4 验证），本地需有 Qwen2.5-0.5B-Instruct 权重目录（`config.json` + `model.safetensors` + tokenizer）。
+**已有学生端评测环境记录**：Linux + RTX 2080 Ti、Python 3.12、PyTorch `2.5.1+cu124`、CUDA 12.4。本地需有 Qwen2.5-0.5B-Instruct 权重目录（`config.json`、`model.safetensors` 和 tokenizer）。以下仅是适用于**Linux + NVIDIA CUDA 12.4** 的安装示例，尚未在全新 GPU 机器上复测；参考 [PyTorch 历史版本官方安装说明](https://pytorch.org/get-started/previous-versions/)。
 
 ```bash
-pip install -r requirements.txt
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+python -m pip install -r requirements.txt
 
-# 接口与合规校验
-python scripts/validate_engine.py --model <权重目录> --device cuda --dtype float16 \
+# 查看 CUDA / GPU 可用性以及可选的 Triton 依赖
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+python -c "import triton; print(triton.__version__)"
+
+# 接口与合规校验（将示例路径换成真实的本地模型目录）
+python scripts/validate_engine.py --model /path/to/Qwen2.5-0.5B-Instruct --device cuda --dtype float16 \
     --attn-implementation sdpa --local-files-only
 
 # 完整评测（正式口径：3 次计时重复 + process 隔离）
-python scripts/run_inference_benchmark.py --model <权重目录> --device cuda --dtype float16 \
+python scripts/run_inference_benchmark.py --model /path/to/Qwen2.5-0.5B-Instruct --device cuda --dtype float16 \
     --attn-implementation sdpa --local-files-only \
     --suite-isolation process --timed-repeats 3 --output-dir results/repro
 ```
+
+`requirements.txt` 未直接固定硬件相关的 `torch` / `triton`，其他 CUDA 或驱动环境应安装兼容版本。GitHub 的 CPU-only CI 不代表 GPU 推理和所报告的性能已经重新验证。
 
 关键哈希：
 
@@ -121,9 +131,9 @@ student_engine.py (96.15)  2291507452793a67551a1124fd2a7e5fc535c6e6bb3cf29be98ab
 
 ## 许可证与来源说明
 
-QwenForge 作者原创的推理引擎、`scripts/` 中的评测及校验脚本、`data/` 中自行构建的数据，以及原创项目文档，采用 [MIT 许可证](LICENSE)。
+QwenForge 作者原创的推理引擎、本人开发的代码及原创项目文档采用 [MIT 许可证](LICENSE)。据维护者说明，大部分评测脚本和大量数据内容为本人编写、生成或整理；MIT 覆盖原创贡献，但不自动将第三方内容重新授权。
 
-**项目诞生背景不等于文件版权归属：** QwenForge 最初在华东师范大学暑期学校期间完成原型。经项目维护者确认，仓库中的评测脚本及数据是为本项目自行编写或生成的，并非直接复制学校提供的评测包。
+**项目背景不等于文件归属：** QwenForge 最初在华东师范大学暑期学校期间完成原型。`data/` 不仅有工作负载 JSONL，还保存了**教师工作区的 vLLM 参考基线结果**；后者不应被称为全部由项目作者独立测得。具体文件来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 **第三方题面例外：** [`docs/benchmark_spec.md`](docs/benchmark_spec.md) 沿用了暑期学校原始任务题面和评测规范。原文权利归相应作者／组织方所有，**不属于 QwenForge MIT 许可的覆盖范围**；本仓库收录该文件不代表授予第三方将原始题面按 MIT 协议再利用的权利。具体见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
