@@ -1,131 +1,140 @@
 # QwenForge ⚒️
 
-**A handwritten inference engine for Qwen2.5-0.5B-Instruct — no vLLM, no `model.generate()`, every kernel from tensor primitives up. Scored 96.15/100 on the benchmark, with decode throughput 3.34× vLLM on the RTX 2080 Ti designated for unified evaluation. Independent work by Ziyi Guan.**
+English | [简体中文](README_zh.md)
 
-手写 Qwen2.5-0.5B-Instruct 推理引擎，作者独立完成于华东师范大学暑期学校实训。评测统一使用 RTX 2080 Ti，以保证所有参与者在同一硬件、同一 baseline 口径下比较。不使用任何现成推理框架（vLLM / `AutoModelForCausalLM.generate` / llama.cpp / TGI 等）：transformer 前向、GQA+RoPE 注意力、KV cache、贪心解码、批处理与服务调度全部用 PyTorch 张量原语手写，Triton 仅作为 kernel 编程语言逐行手写；不硬编码任何 benchmark 答案 / case / 关键词。
+**A handwritten, white-box inference engine for Qwen2.5-0.5B-Instruct — no `vLLM`, no `model.generate()`, built from PyTorch tensor primitives and custom Triton kernels.**
 
-- 作者：管子仪（Ziyi Guan），独立完成
-- 致谢：感谢华东师范大学数据科学与工程学院胡卉芪老师的指导；感谢杨钦如、吴霞两位同学在算力和 token 上的支持
-- 硬件：RTX 2080 Ti（Turing sm_75，11 GB，统一测评指定硬件）
-- 最终版本：`v20260719_2080ti_96p15_servingpolicymemo`，正式评测得分 **96.15 / 100**
-- 📊 汇报 slides：[slides/Qwen推理优化汇报.pdf](slides/Qwen推理优化汇报.pdf)（16 页，含瓶颈分析、五轮优化与定量归因）
+Scored **96.15 / 100** on the unified evaluation benchmark, achieving **3.34× vLLM decode throughput (750.6 tok/s)** on a single **RTX 2080 Ti (Turing `sm_75`)**.
 
-> **范围说明**：本项目为暑期学校实训作品，从接触课题到最终交付只有两天左右，因此只深入研究了推理优化问题空间中的一小部分——单卡、小模型（0.5B）、贪心解码场景下的调度与访存瓶颈；量化、投机解码、多卡并行、PagedAttention 等方向均未涉及。3.34× 反映的是该特定场景下（小模型 + Turing 老卡，通用框架每 token 固定开销占比大）专用引擎相对通用引擎的优势，不构成对 vLLM 的一般性性能比较。
+- **Author**: Ziyi Guan (independent work)
+- **Acknowledgments**: Special thanks to Prof. Huiqi Hu (School of Data Science and Engineering, East China Normal University) for guidance, and to Qinru Yang and Xia Wu for compute and token support.
+- **Target Hardware**: NVIDIA RTX 2080 Ti (Turing `sm_75`, 11 GB VRAM)
+- **Latest Benchmark Milestone**: `v20260719_2080ti_96p15_servingpolicymemo` (official benchmark score: **96.15 / 100**)
+- **Presentation Slides**: [Technical presentation](slides/Qwen推理优化汇报.pdf) (16 slides covering bottleneck profiling, five rounds of optimization, and quantitative attribution)
 
-## 1. 最终成绩
+> **Scope & Positioning**: Originally developed as an intensive 48-hour prototype at the ECNU Summer School, QwenForge explores the performance limits of **legacy consumer GPUs (Turing `sm_75`) running sub-1B parameter models**. It uses no off-the-shelf inference frameworks (`vLLM`, `AutoModelForCausalLM.generate`, `llama.cpp`, or `TGI`): the Transformer forward pass, GQA + RoPE attention, KV cache management, greedy decoding, batch scheduling, and custom Triton kernels are implemented by hand. The 3.34× speedup applies to this specific benchmark configuration, where fixed per-token overhead is significant for small models on older GPUs; it is not a general performance claim about vLLM. The project provides a white-box benchmark and educational reference for inference optimization.
 
-全六套 workload × 3 次计时重复 × process 隔离，与教师 vLLM baseline（0.8.5.post1，同卡同数据同计时口径）严格一致：
+---
 
-| 分项 | 得分 | 关键指标 |
-|---|---:|---|
-| Long Context | 28.50 / 30 | partial 0.950，exact 0.933 |
-| Decode TPS | **25.00 / 25（满分）** | 750.6 tok/s\* = vLLM 的 **3.34×** |
-| TTFT / Prefill | 17.92 / 20 | avg 0.064 s，p95 0.185 s |
-| Serving / Scheduling | **14.73 / 15** | **764.1 tok/s（1.79×）**，p95 1.446 s，12/12 内容有效 |
-| Runtime Robustness | 10.00 / 10 | runtime 1.000，零 OOM / Traceback |
-| **总分** | **96.15 / 100** | Realism Guard OK，CAP 100 |
+## 1. Benchmark Results
 
-\* Decode TPS 为 batch ∈ {1, 2, 4} 中的最优成绩，即 **batch=4 的聚合吞吐**（多请求共享同一次权重搬运）。单请求（batch=1）decode 约 250 tok/s、每步 ~4 ms——即 FP16 权重 988 MB ÷ 实测有效带宽 ~250 GB/s 的下限。baseline vLLM 按同口径、同 batch 配置对比。
+Evaluated across six workloads × three timed repeats with process isolation, against the Summer School's official `vLLM` baseline (`v0.8.5.post1`) using identical hardware, datasets, and timing protocols:
 
-合规验证：教师 `validate_engine.py` Signature / Runtime interface 双通过；手写 forward 与官方 Transformers 对齐（top-1 token id 双方均 2130）；禁止项扫描 0 命中。
+| Evaluation Suite | Score | Key Metrics & Comparison |
+| :--- | :--- | :--- |
+| **Long Context** | **28.50 / 30** | Partial: `0.950`, exact: `0.933` |
+| **Decode TPS** | **25.00 / 25** *(full marks)* | **750.6 tok/s**\* (**3.34×** the vLLM baseline) |
+| **TTFT / Prefill** | **17.92 / 20** | Average: `0.064 s`, p95: `0.185 s` |
+| **Serving / Scheduling** | **14.73 / 15** | **764.1 tok/s** (**1.79×** vLLM), p95: `1.446 s`, `12/12` valid outputs |
+| **Runtime Robustness** | **10.00 / 10** *(full marks)* | Runtime: `1.000`, zero OOM errors or tracebacks |
+| **Total Score** | **96.15 / 100** | Realism Guard: `OK`, CAP: `100` |
 
-## 2. 优化历程
+\* **Decode throughput** is the best aggregate result across `batch ∈ {1, 2, 4}`, achieved at `batch=4`, where concurrent requests share weight memory transfers. Single-request (`batch=1`) decode reaches approximately 250 tok/s (~4 ms/step), consistent with a bandwidth-based estimate of 988 MB of FP16 weights divided by ~250 GB/s of measured effective bandwidth. The vLLM baseline uses the same batch configurations.
 
-**91.35 → 92.08 → 94.87 → 95.09 → 95.32 → 95.93 → 96.15**（累计 +4.80），每一步都由 profile 数据驱动：
+**Compliance & Numerical Validation**:
 
-| 版本 | 得分 | Δ | 一句话 |
-|---|---:|---:|---|
-| v20260718_91p35 | 91.35 | — | 首个 2080Ti 可用版：修复 Turing `enable_gqa` 强制 MATH 后端导致的 serving OOM |
-| v20260718_92p08_compile | 92.08 | +0.73 | torch.compile 融合逐点算子（RMSNorm / SwiGLU / RoPE） |
-| v20260719_94p87_cudagraph | 94.87 | +2.79 | CUDA Graph 整步 decode 捕获重放，**Decode 首次满分** |
-| v20260719_95p09_segattn | 95.09 | +0.22 | 分段 split-K 注意力 + KV 容量 64 对齐 |
-| v20260719_95p32_flashdecode | 95.32 | +0.23 | **手写 Triton flash-decoding kernel**，Serving 1.66× 首次越过满分线 |
-| v20260719_95p93_flashprefill_copyrecovery | 95.93 | +0.61 | 手写 Triton flash-prefill + cache-free prefill + 通用 copy 退化恢复，Serving 12/12 有效 |
-| **v20260719_96p15_servingpolicymemo** | **96.15** | +0.22 | **退化重试离开计时路径**：Serving 速度与质量首次同时满分区 |
+- Passed both signature and runtime interface checks in `validate_engine.py`.
+- Matched the official Hugging Face Transformers implementation's top-1 token ID (`2130`) in forward-pass validation.
+- Zero matches in scans for prohibited external inference frameworks.
 
-完整的每一版立项 / 实现 / 验证 / 结论见 [docs/optimization_journey.md](docs/optimization_journey.md)，各版本改动清单见 [docs/versions/](docs/versions/)。
+---
 
-### 核心技术点
+## 2. Optimization Journey
 
-- **CUDA Graph 整步 decode**：decode 每步 24 层 ≈ 300 次 kernel launch，把整步捕获成一张图重放（~5 次发射/步），按 (batch, capacity) 注册复用，异常自动回退 eager。单步最大收益（+2.79）。
-- **手写 Triton flash-decoding**：split-K 在线 softmax，K/V 各只读一次、不物化分数矩阵，GQA 7 组头垫 16 行搭 tensor-core `tl.dot`。微基准 0.617 → 0.180 ms/层（3.42×），对拍误差 ≤ 2.7e-4。
-- **手写 Triton flash-prefill**：长序列流式 online-softmax，短序列回退 SDPA；cache-free 整模型 prefill 编译路径压 TTFT。
-- **通用 copy 退化恢复 + 退化策略记忆**：8-token n-gram 重合率判定 prompt-copy 退化，引导后缀重试；首次学习、后续走主 batch 快路径，重试成本离开计时区。不依赖 suite / case / 关键词 / 预置答案。
-- **多级回退链**：Triton → torch 分段 math → eager，每层优化失败都能退回正确实现，Robustness 全程满分。
+Each iteration was guided by quantitative profiling, raising the score from **91.35 to 96.15** — a cumulative gain of **4.80 points**:
 
-### 方法论
+| Version Identifier | Score | Δ | Core Technical Contribution |
+| :--- | :---: | :---: | :--- |
+| `v20260718_91p35` | 91.35 | — | Initial working baseline on the 2080 Ti: resolved serving OOM errors caused by the Turing `enable_gqa` fallback to the `MATH` backend. |
+| `v20260718_92p08_compile` | 92.08 | +0.73 | `torch.compile` fusion for pointwise operators (`RMSNorm`, `SwiGLU`, `RoPE`). |
+| `v20260719_94p87_cudagraph` | 94.87 | +2.79 | **Full-step CUDA Graph** capture and replay for decode, achieving full marks on Decode TPS. |
+| `v20260719_95p09_segattn` | 95.09 | +0.22 | Segmented split-K attention and KV cache capacity aligned to multiples of 64. |
+| `v20260719_95p32_flashdecode` | 95.32 | +0.23 | Handwritten **Triton flash-decoding** kernel; serving throughput reached 1.66× the baseline, crossing the full-mark speed threshold. |
+| `v20260719_95p93_flashprefill_copyrecovery` | 95.93 | +0.61 | Handwritten **Triton flash-prefill**, cache-free prefill, and general prompt-copy degeneration recovery (`12/12` valid outputs). |
+| `v20260719_96p15_servingpolicymemo` | **96.15** | +0.22 | Policy memoization moved degeneration retries outside the timed path, bringing serving speed and output validity into the full-mark range together. |
 
-1. **定量归因驱动**：每一分的去向都算清楚（评分公式反推每个 norm 的边际收益），只做期望收益最大的改动
-2. **Roofline 思维**：decode 访存受限（权重重载 988 MB/步）、prefill 算力受限（实测 33 TFLOPS），分别决定了 batch 化、CUDA Graph、flash kernel 的收益上限
-3. **质量与速度解耦**：内容修复（copy 恢复）与性能（策略记忆）分开设计，最终两者兼得
+Detailed hypotheses, implementation notes, and profiling logs are documented in [`docs/optimization_journey.md`](docs/optimization_journey.md) and [`docs/versions/`](docs/versions/).
 
-## 3. 目录结构
+### Core Technical Highlights
+
+- **Full-Step CUDA Graph Decode**: Captures approximately 300 kernel launches across 24 Transformer layers per decode step into a graph for replay (~5 launches per step). Graphs are cached by `(batch, capacity)`, with automatic fallback to eager execution on failure. This delivered the largest individual score gain (**+2.79**).
+- **Handwritten Triton Flash-Decoding**: Implements split-K online softmax, reading K/V once without materializing the attention score matrix. Pads the seven query heads per GQA group to 16 rows for Tensor Core operations through `tl.dot`. Microbenchmark latency dropped from `0.617` to `0.180 ms/layer` (**3.42× speedup**), with numerical error `≤ 2.7e-4` in validation.
+- **Handwritten Triton Flash-Prefill**: Uses streaming online softmax for long sequences and falls back to SDPA for short prompts. A compiled, cache-free prefill path reduces time to first token (TTFT).
+- **General Copy-Degeneration Recovery & Policy Memoization**: Detects prompt-copy degeneration using 8-token n-gram overlap and retries with a guiding suffix. Learned policies are memoized so subsequent runs use the main batch path, keeping retries outside the timed region. No benchmark answers, test cases, or keywords are hardcoded.
+- **Multi-Tier Fallback Chain**: `Triton → PyTorch segmented math → eager execution`. Each optimization can fall back to a correct implementation, maintaining a **10/10** Runtime Robustness score.
+
+### Engineering Methodology
+
+- **Quantitative Attribution**: Used evaluation formulas to estimate marginal score gains and prioritize the bottlenecks with the greatest expected benefit.
+- **Roofline-Driven Design**: Identified decode as memory-bandwidth bound (988 MB of weights reloaded per step) and prefill as compute-bound (~33 TFLOPS measured). These observations guided batching, CUDA Graph capture, and custom attention kernels.
+- **Decoupling Quality from Speed**: Addressed output validity through copy-degeneration recovery and performance through policy memoization, improving both together.
+
+---
+
+## 3. Repository Structure
 
 ```text
 .
-├── student_engine.py        ← 引擎主体（forward / prefill / decode / KV cache / 调度 / Triton kernels）
-├── utils/                   ← 权重加载、显存与指标工具
-├── scripts/                 ← 评测与校验脚本（暑期学校公开评测包）
-├── examples/                ← 手写引擎最小骨架示例
-├── data/                    ← 公开评测数据（jsonl）与 baseline summary
-├── results/                 ← 96.15 正式评测原始结果（full_eval_v13_candidate）
+├── student_engine.py               # Core engine: forward, prefill, decode, KV cache, scheduling, Triton kernels
+├── utils/                          # Weight loading, VRAM management, and metric utilities
+├── scripts/                        # Summer School validation and benchmark scripts
+├── examples/                       # Minimal handwritten inference skeleton
+├── data/                           # Public evaluation workloads (JSONL) and baseline summaries
+├── results/                        # Raw results for the 96.15 milestone (full_eval_v13_candidate)
 ├── docs/
-│   ├── optimization_journey.md  ← 完整优化历程（91.35 → 96.15）
-│   ├── benchmark_spec.md        ← 实训任务与评分说明
-│   └── versions/                ← 各冻结版本的改动清单与验证记录
-├── slides/                  ← 汇报 PPT（PDF）
-└── whiteboard_minimal_transformer/  ← 前置学习：白板最小 Transformer（220 参数玩具模型）
+│   ├── optimization_journey.md      # Profiling and optimization log (91.35 → 96.15)
+│   ├── benchmark_spec.md            # Evaluation specifications and scoring rubric
+│   └── versions/                   # Per-version change lists and verification records
+├── slides/                         # Technical presentation slides (PDF)
+└── whiteboard_minimal_transformer/ # Educational 220-parameter Transformer
 ```
 
-## 4. 复现
+## 4. Quick Start & Reproduction
 
-环境：CUDA GPU（已在 RTX 2080 Ti + PyTorch 2.5.1 / py3.12 / CUDA 12.4 验证），本地需有 Qwen2.5-0.5B-Instruct 权重目录（`config.json` + `model.safetensors` + tokenizer）。
+**Validated environment**: NVIDIA RTX 2080 Ti, PyTorch 2.5.1, Python 3.12, and CUDA 12.4. A local Qwen2.5-0.5B-Instruct weight directory is required, containing `config.json`, `model.safetensors`, and tokenizer files.
+
+Replace `/path/to/Qwen2.5-0.5B-Instruct` below with your local weight directory:
 
 ```bash
 pip install -r requirements.txt
 
-# 接口与合规校验
-python scripts/validate_engine.py --model <权重目录> --device cuda --dtype float16 \
+# 1. Interface and compliance validation
+python scripts/validate_engine.py --model /path/to/Qwen2.5-0.5B-Instruct --device cuda --dtype float16 \
     --attn-implementation sdpa --local-files-only
 
-# 完整评测（正式口径：3 次计时重复 + process 隔离）
-python scripts/run_inference_benchmark.py --model <权重目录> --device cuda --dtype float16 \
+# 2. Full benchmark: three timed repeats with process isolation
+python scripts/run_inference_benchmark.py --model /path/to/Qwen2.5-0.5B-Instruct --device cuda --dtype float16 \
     --attn-implementation sdpa --local-files-only \
     --suite-isolation process --timed-repeats 3 --output-dir results/repro
 ```
 
-关键哈希：
+**Artifact Integrity (SHA-256)** — `student_engine.py` at the 96.15 benchmark milestone:
 
 ```text
-student_engine.py (96.15)  2291507452793a67551a1124fd2a7e5fc535c6e6bb3cf29be98ab05ceb7e6b29
+2291507452793a67551a1124fd2a7e5fc535c6e6bb3cf29be98ab05ceb7e6b29
 ```
 
-## 5. 为什么止步 96.15
+## 5. Bottleneck Analysis: Why 96.15 / 100?
 
-| 缺口 | 分值 | 性质 |
-|---|---:|---|
-| Long Context | ~1.50 | 1/15 样本答错，0.5B 模型能力边界 |
-| TTFT | ~2.08 | prefill 已贴硬件上限（compute-bound 33 TFLOPS） |
-| Serving prefix balance | ~0.27 | 单流 12 请求下的结构性上限，与速度无关 |
+Decode speed, serving speed/p95, and runtime robustness achieved full marks under this evaluation. The remaining **3.85-point gap** was attributed to the following limitations in the recorded benchmark:
 
-速度类计分项（Decode speed、Serving speed / p95）已全部打满，剩余分数均为非性能可触及项。
+| Remaining Gap | Points | Attributed Limitation |
+| :--- | :---: | :--- |
+| Long Context Accuracy | ~1.50 | One incorrect response out of 15 samples, attributed to the 0.5B model's capacity limits. |
+| TTFT / Prefill | ~2.08 | Prefill was already close to the measured compute ceiling (~33 TFLOPS). |
+| Serving Prefix Balance | ~0.27 | A structural limit under the single-stream, 12-request workload, independent of engine speed. |
 
-## 6. 开源演进路线图 (Open-Source Roadmap)
+## 6. Open-Source Roadmap (v0.2+)
 
-本项目最初诞生于暑期学校极限实训（48 小时原型），旨在探索 **Turing (`sm_75`) 等老旧消费级显卡在极小模型（Sub-1B）下的硬件性能极限**。目前正将其从单文件原型重构为面向社区的**轻量级白盒推理引擎与算子教学基准库**，后续迭代计划如下：
+We are transitioning QwenForge from a single-file prototype into a modular, community-oriented **lightweight white-box inference engine and kernel benchmark suite** for legacy and consumer GPUs. Planned work includes:
 
-- [ ] **工程模块化重构**：将核心引擎（`student_engine.py`）解耦拆分为独立的 `kernels/`（Triton 算子库）、`runtime/`（CUDA Graph 与 KV Cache 调度）与 `models/` 模块，提供标准 Python 包安装接口。
-- [ ] **Turing 架构量化算子扩展**：针对 `sm_75` Tensor Core 特性，手写实现 W8A16 / W4A16 权重量化 Triton Decode Kernel，进一步降低访存带宽瓶颈。
-- [ ] **动态显存管理 (PagedAttention)**：引入块级 KV Cache 管理与 Continuous Batching，提升长序列并发服务吞吐。
-- [ ] **多模型家族与跨代 GPU 支持**：扩展适配 Qwen2.5-1.5B/3B 及 Llama-3.2 系列，并提供跨代架构（Turing / Ampere / Ada）的自动化微基准测试与 CI 回归流水线。
+- [ ] **Modular Architecture Refactoring**: Split `student_engine.py` into `kernels/` (Triton operators), `runtime/` (CUDA Graph and KV cache scheduling), and `models/`, with standard Python packaging and `pip` installation support.
+- [ ] **Quantized Triton Kernels for Turing (`sm_75`)**: Implement W8A16 / W4A16 weight-quantized Triton decode kernels tailored to Turing Tensor Cores to reduce memory-bandwidth pressure.
+- [ ] **PagedAttention & Continuous Batching**: Introduce block-level dynamic KV cache management to improve throughput for concurrent long-context requests.
+- [ ] **Multi-Model & Cross-Architecture CI**: Expand support to the Qwen2.5-1.5B/3B and Llama-3.2 families, with automated microbenchmarks and CI regression pipelines across Turing, Ampere, and Ada GPUs.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Released under the [MIT License](LICENSE).
 
-`scripts/`、`data/` 与 `docs/benchmark_spec.md` 源自华东师范大学暑期学校实训发布的公开评测包，仅为复现评测成绩保留，版权归原作者所有。
-
-## 致谢
-
-- 感谢华东师范大学数据科学与工程学院胡卉芪老师的指导。
-- 感谢杨钦如、吴霞两位同学在算力和 token 上的支持。
+Evaluation scripts (`scripts/`), workload data (`data/`), and benchmark specifications (`docs/benchmark_spec.md`) originate from the ECNU Summer School public evaluation suite and are retained for reproducibility. Copyright in those materials remains with their original authors.
