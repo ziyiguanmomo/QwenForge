@@ -32,3 +32,27 @@ The reported 3.34x decode speedup is scoped to the documented RTX 2080 Ti / 0.5B
 ## Proposed next checks
 
 Add GPU-backed regression runs when a reliable runner becomes available; test additional GPU architectures separately. CI status must be described according to the checks that actually execute.
+
+## Published vLLM comparison: what is and is not matched
+
+The archived `results/full_eval_v13_candidate/final_summary.json` contains a QwenForge run and a saved vLLM reference baseline. The available metadata establishes the following:
+
+| Recorded attribute | QwenForge run | Saved vLLM reference |
+| --- | --- | --- |
+| GPU model | NVIDIA GeForce RTX 2080 Ti | NVIDIA GeForce RTX 2080 Ti |
+| Host label | `2080ti-server` | `10-23-12-30` |
+| PyTorch build | `2.5.1+cu124` | `2.6.0+cu124` |
+| Reported CUDA runtime | 12.4 | 12.4 |
+| Timing protocol | 3 timed repeats, process isolation | 3 timed repeats, process isolation |
+| Benchmark workloads | Six JSONL suites | Six JSONL suites |
+| Workload SHA-256 | Matches reference for all six suites | Matches student for all six suites |
+
+Thus the published **3.34x** decode-throughput result is a **recorded, workload-specific comparison on the same GPU model**, **not** a same-host and fully software-matched benchmark. The files do not establish identical model-weight file hashes across both environments, and package / host differences may affect throughput and latency. For a stronger head-to-head comparison, rerun both engines on the same machine, model weights, runtime versions, and measurement protocol, and publish the new measurements separately.
+
+`data/public_baseline_summary.json` records the reference baseline using paths from an instructor workspace. It should not be confused with the maintainer's original engine and code. Identical workload hashes establish identical data bytes, **not** authorship of every dataset file. See [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+
+## Reproducing the software environment
+
+The README now provides an example PyTorch 2.5.1 CUDA 12.4 installation on compatible Linux/NVIDIA systems, sourced from [PyTorch's official previous-versions guide](https://pytorch.org/get-started/previous-versions/). This documentation has **not** been newly tested on a clean GPU host. The `requirements.txt` file intentionally does not install or pin hardware-dependent `torch`/`triton` packages.
+
+Verify `torch.cuda.is_available()`, check `triton` imports, and run the model-backed validation and evaluation on your own compatible hardware. CI remains CPU-only; a green check never implies Triton-kernel compilation, inference correctness, or reproduction of the reported performance.

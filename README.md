@@ -18,7 +18,7 @@ Scored **96.15 / 100** on the unified evaluation benchmark, achieving **3.34× v
 
 ## 1. Benchmark Results
 
-Evaluated across six workloads × three timed repeats with process isolation, against the Summer School's official `vLLM` baseline (`v0.8.5.post1`) using identical hardware, datasets, and timing protocols:
+Evaluated across six workloads × three timed repeats with process isolation, compared with the saved Summer School `vLLM` reference baseline (`v0.8.5.post1`). Both runs used the **same GPU model (RTX 2080 Ti)**, six workload files with matching SHA-256 fingerprints, and recorded comparable benchmark settings. **The runs used different hosts and PyTorch versions**, so this was not a same-host, identical-software comparison. See [testing notes](docs/TESTING.md):
 
 | Evaluation Suite | Score | Key Metrics & Comparison |
 | :--- | :--- | :--- |
@@ -77,9 +77,9 @@ Detailed hypotheses, implementation notes, and profiling logs are documented in 
 .
 ├── student_engine.py               # Core engine: forward, prefill, decode, KV cache, scheduling, Triton kernels
 ├── utils/                          # Weight loading, VRAM management, and metric utilities
-├── scripts/                        # Maintainer-authored validation and benchmark scripts
+├── scripts/                        # Evaluation and validation scripts, primarily developed by maintainer
 ├── examples/                       # Minimal handwritten inference skeleton
-├── data/                           # Public evaluation workloads (JSONL) and baseline summaries
+├── data/                           # Evaluation workloads (JSONL) and recorded vLLM reference results
 ├── results/                        # Raw results for the 96.15 milestone (full_eval_v13_candidate)
 ├── docs/
 │   ├── optimization_journey.md      # Profiling and optimization log (91.35 → 96.15)
@@ -91,12 +91,20 @@ Detailed hypotheses, implementation notes, and profiling logs are documented in 
 
 ## 4. Quick Start & Reproduction
 
-**Validated environment**: NVIDIA RTX 2080 Ti, PyTorch 2.5.1, Python 3.12, and CUDA 12.4. A local Qwen2.5-0.5B-Instruct weight directory is required, containing `config.json`, `model.safetensors`, and tokenizer files.
+**Recorded student environment:** Linux, NVIDIA RTX 2080 Ti, Python 3.12, PyTorch `2.5.1+cu124`, and CUDA 12.4. A local Qwen2.5-0.5B-Instruct weight directory is required (`config.json`, `model.safetensors`, and tokenizer files). The following setup is an example for **Linux + NVIDIA CUDA 12.4**, not a freshly verified installation. See the [official PyTorch 2.5.1 installation instructions](https://pytorch.org/get-started/previous-versions/).
 
-Replace `/path/to/Qwen2.5-0.5B-Instruct` below with your local weight directory:
+Replace `/path/to/Qwen2.5-0.5B-Instruct` below with your actual local model directory:
 
 ```bash
-pip install -r requirements.txt
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+python -m pip install -r requirements.txt
+
+# Verify CUDA availability and Triton before GPU execution.
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+python -c "import triton; print(triton.__version__)"
 
 # 1. Interface and compliance validation
 python scripts/validate_engine.py --model /path/to/Qwen2.5-0.5B-Instruct --device cuda --dtype float16 \
@@ -107,6 +115,8 @@ python scripts/run_inference_benchmark.py --model /path/to/Qwen2.5-0.5B-Instruct
     --attn-implementation sdpa --local-files-only \
     --suite-isolation process --timed-repeats 3 --output-dir results/repro
 ```
+
+`requirements.txt` intentionally omits hardware-specific PyTorch/Triton installations. For other drivers/CUDA platforms, choose a compatible PyTorch build and verify Triton support before attempting benchmarks. These new install instructions have **not** been tested on a fresh GPU host; successful CPU-only CI does not validate inference performance.
 
 **Artifact Integrity (SHA-256)** — `student_engine.py` at the 96.15 benchmark milestone:
 
@@ -135,8 +145,8 @@ We are transitioning QwenForge from a single-file prototype into a modular, comm
 
 ## License and provenance
 
-QwenForge's original inference engine, maintainer-authored validation and benchmark scripts (`scripts/`), maintainer-created evaluation data (`data/`), and original project documentation are released under the [MIT License](LICENSE).
+QwenForge's original inference engine, author-created scripts and documentation are released under the [MIT License](LICENSE). According to the maintainer, most evaluation scripts and substantial parts of the workload data were written, generated, or assembled for this project. Original QwenForge contributions are MIT-licensed; this does not relicense externally sourced material.
 
-**Project origin is not file provenance:** QwenForge began as a prototype during the ECNU Summer School. According to the project maintainer, the scripts and datasets in this repository were written or generated for QwenForge, rather than copied from the Summer School evaluation package.
+**Project origin is not file provenance:** QwenForge began during the ECNU Summer School. The `data/` directory includes workload JSONL files and a **saved vLLM reference-baseline summary** from an instructor-workspace run. That reference measurement is not presented as an exclusively maintainer-authored result. See the per-file distinctions in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 **Third-party exception:** [`docs/benchmark_spec.md`](docs/benchmark_spec.md) reproduces the original Summer School assignment and benchmark specification. The original authors/organizers retain rights to that material; **this file is not covered by QwenForge's MIT license**. Its inclusion does not grant third parties an MIT license to the original assignment text. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.

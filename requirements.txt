@@ -1,5 +1,8 @@
-# 学生端只需要运行已准备好的公开 benchmark，不需要 lm_eval。
-# torch 建议优先使用课程服务器预装版本；如需自装，请按服务器 CUDA/驱动选择合适 wheel。
+# Supporting Python dependencies for model-backed QwenForge runs.
+# Install a platform-appropriate PyTorch build first and verify Triton separately.
+# See README.md (Quick Start & Reproduction) for a Linux CUDA 12.4 example.
+# torch/triton are intentionally omitted because builds depend on GPU/OS/CUDA.
+# This is not a fully pinned dependency lockfile.
 
 transformers
 accelerate
