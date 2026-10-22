@@ -110,6 +110,15 @@ student_engine.py (96.15)  2291507452793a67551a1124fd2a7e5fc535c6e6bb3cf29be98ab
 
 速度类计分项（Decode speed、Serving speed / p95）已全部打满，剩余分数均为非性能可触及项。
 
+## 6. 开源演进路线图 (Open-Source Roadmap)
+
+本项目最初诞生于暑期学校极限实训（48 小时原型），旨在探索 **Turing (`sm_75`) 等老旧消费级显卡在极小模型（Sub-1B）下的硬件性能极限**。目前正将其从单文件原型重构为面向社区的**轻量级白盒推理引擎与算子教学基准库**，后续迭代计划如下：
+
+- [ ] **工程模块化重构**：将核心引擎（`student_engine.py`）解耦拆分为独立的 `kernels/`（Triton 算子库）、`runtime/`（CUDA Graph 与 KV Cache 调度）与 `models/` 模块，提供标准 Python 包安装接口。
+- [ ] **Turing 架构量化算子扩展**：针对 `sm_75` Tensor Core 特性，手写实现 W8A16 / W4A16 权重量化 Triton Decode Kernel，进一步降低访存带宽瓶颈。
+- [ ] **动态显存管理 (PagedAttention)**：引入块级 KV Cache 管理与 Continuous Batching，提升长序列并发服务吞吐。
+- [ ] **多模型家族与跨代 GPU 支持**：扩展适配 Qwen2.5-1.5B/3B 及 Llama-3.2 系列，并提供跨代架构（Turing / Ampere / Ada）的自动化微基准测试与 CI 回归流水线。
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
