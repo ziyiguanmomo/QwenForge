@@ -77,13 +77,13 @@ Detailed hypotheses, implementation notes, and profiling logs are documented in 
 .
 ├── student_engine.py               # Core engine: forward, prefill, decode, KV cache, scheduling, Triton kernels
 ├── utils/                          # Weight loading, VRAM management, and metric utilities
-├── scripts/                        # Summer School validation and benchmark scripts
+├── scripts/                        # Maintainer-authored validation and benchmark scripts
 ├── examples/                       # Minimal handwritten inference skeleton
 ├── data/                           # Public evaluation workloads (JSONL) and baseline summaries
 ├── results/                        # Raw results for the 96.15 milestone (full_eval_v13_candidate)
 ├── docs/
 │   ├── optimization_journey.md      # Profiling and optimization log (91.35 → 96.15)
-│   ├── benchmark_spec.md            # Evaluation specifications and scoring rubric
+│   ├── benchmark_spec.md            # ECNU Summer School original assignment/specification
 │   └── versions/                   # Per-version change lists and verification records
 ├── slides/                         # Technical presentation slides (PDF)
 └── whiteboard_minimal_transformer/ # Educational 220-parameter Transformer
@@ -133,8 +133,10 @@ We are transitioning QwenForge from a single-file prototype into a modular, comm
 - [ ] **PagedAttention & Continuous Batching**: Introduce block-level dynamic KV cache management to improve throughput for concurrent long-context requests.
 - [ ] **Multi-Model & Cross-Architecture CI**: Expand support to the Qwen2.5-1.5B/3B and Llama-3.2 families, with automated microbenchmarks and CI regression pipelines across Turing, Ampere, and Ada GPUs.
 
-## License
+## License and provenance
 
-Released under the [MIT License](LICENSE).
+QwenForge's original inference engine, maintainer-authored validation and benchmark scripts (`scripts/`), maintainer-created evaluation data (`data/`), and original project documentation are released under the [MIT License](LICENSE).
 
-Evaluation scripts (`scripts/`), workload data (`data/`), and benchmark specifications (`docs/benchmark_spec.md`) originate from the ECNU Summer School public evaluation suite and are retained for reproducibility. Copyright in those materials remains with their original authors.
+**Project origin is not file provenance:** QwenForge began as a prototype during the ECNU Summer School. According to the project maintainer, the scripts and datasets in this repository were written or generated for QwenForge, rather than copied from the Summer School evaluation package.
+
+**Third-party exception:** [`docs/benchmark_spec.md`](docs/benchmark_spec.md) reproduces the original Summer School assignment and benchmark specification. The original authors/organizers retain rights to that material; **this file is not covered by QwenForge's MIT license**. Its inclusion does not grant third parties an MIT license to the original assignment text. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
